@@ -77,6 +77,9 @@ function buildDefaultState(): DrawState {
 
 // ─── Supabase persistence ───────────────────────────────────────────
 
+let lastSavedState: DrawState | null = null;
+let saveQueue: Promise<void> = Promise.resolve();
+
 interface DbStaffMember {
   id: string;
   staff_id: string;
@@ -154,6 +157,7 @@ export async function loadInitialState(): Promise<DrawState> {
     if (!settings) {
       const defaults = buildDefaultState();
       await seedDatabase(defaults);
+      lastSavedState = defaults;
       return defaults;
     }
 
@@ -165,6 +169,7 @@ export async function loadInitialState(): Promise<DrawState> {
     if (prizeRows.length === 0 && staffRows.length === 0) {
       const defaults = buildDefaultState();
       await seedDatabase(defaults);
+      lastSavedState = defaults;
       return defaults;
     }
 
@@ -198,7 +203,7 @@ export async function loadInitialState(): Promise<DrawState> {
       cat3: settings.raw_cat3 || '',
     };
 
-    return {
+    const loaded: DrawState = {
       prizes,
       cat1: cleanCat1,
       cat2: cleanCat2,
@@ -208,6 +213,8 @@ export async function loadInitialState(): Promise<DrawState> {
       tierRules: { cat1Cutoff: settings.cat1_cutoff, cat2Cutoff: settings.cat2_cutoff },
       rawInputs,
     };
+    lastSavedState = loaded;
+    return loaded;
   } catch (err) {
     console.warn('Failed to load state from Supabase, falling back to defaults', err);
     return buildDefaultState();
@@ -225,13 +232,26 @@ export async function seedDatabase(state: DrawState): Promise<void> {
     supabase.from('winners').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
   ]);
 
+  const BATCH_SIZE = 80;
+
   const staffRows = [
     ...state.cat1.map(s => ({ staff_id: s.id, name: s.name, dept: s.dept, category: 'cat1' })),
     ...state.cat2.map(s => ({ staff_id: s.id, name: s.name, dept: s.dept, category: 'cat2' })),
     ...state.cat3.map(s => ({ staff_id: s.id, name: s.name, dept: s.dept, category: 'cat3' })),
   ];
 
+  for (let i = 0; i < staffRows.length; i += BATCH_SIZE) {
+    const batch = staffRows.slice(i, i + BATCH_SIZE);
+    const { error } = await supabase.from('staff_members').insert(batch);
+    if (error) throw error;
+  }
+
   const prizeRows = state.prizes.map((name, idx) => ({ rank: idx + 1, name }));
+  for (let i = 0; i < prizeRows.length; i += BATCH_SIZE) {
+    const batch = prizeRows.slice(i, i + BATCH_SIZE);
+    const { error } = await supabase.from('prizes').insert(batch);
+    if (error) throw error;
+  }
 
   const settingsRow = {
     id: 1,
@@ -244,65 +264,81 @@ export async function seedDatabase(state: DrawState): Promise<void> {
     current_prize_index: state.currentPrizeIndex,
   };
 
-  const [staffInsert, prizesInsert, settingsUpsert] = await Promise.all([
-    staffRows.length > 0 ? supabase.from('staff_members').insert(staffRows) : Promise.resolve({ error: null }),
-    prizeRows.length > 0 ? supabase.from('prizes').insert(prizeRows) : Promise.resolve({ error: null }),
-    supabase.from('draw_settings').upsert(settingsRow),
-  ]);
+  const { error: settingsUpsertErr } = await supabase.from('draw_settings').upsert(settingsRow);
+  if (settingsUpsertErr) throw settingsUpsertErr;
 
-  if (staffInsert.error) throw staffInsert.error;
-  if (prizesInsert.error) throw prizesInsert.error;
-  if (settingsUpsert.error) throw settingsUpsert.error;
+  lastSavedState = state;
 }
 
 /**
  * Persist the full draw state to Supabase. Fire-and-forget — the app continues
  * working with local state while the write happens in the background.
+ *
+ * Instead of deleting and re-inserting hundreds of rows on every draw, this
+ * does a targeted sync: only writes the rows that actually changed since the
+ * last successful save. A serial queue prevents overlapping saves.
  */
+
 export function saveState(state: DrawState): void {
   if (!isSupabaseConfigured) return;
-  void saveStateAsync(state);
+  saveQueue = saveQueue.then(() => saveStateAsync(state).catch(err => {
+    console.error('Failed to save state to Supabase', err);
+  }));
 }
 
 async function saveStateAsync(state: DrawState): Promise<void> {
-  try {
-    // 1. Update settings
-    const { error: settingsErr } = await supabase.from('draw_settings').upsert({
-      id: 1,
-      cat1_cutoff: state.tierRules.cat1Cutoff,
-      cat2_cutoff: state.tierRules.cat2Cutoff,
-      raw_prizes: state.rawInputs.prizes,
-      raw_cat1: state.rawInputs.cat1,
-      raw_cat2: state.rawInputs.cat2,
-      raw_cat3: state.rawInputs.cat3,
-      current_prize_index: state.currentPrizeIndex,
-      updated_at: new Date().toISOString(),
-    });
-    if (settingsErr) throw settingsErr;
+  const prev = lastSavedState;
+  lastSavedState = state;
 
-    // 2. Sync staff_members: delete all and re-insert (simple and correct for this scale)
-    await supabase.from('staff_members').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    const staffRows = [
-      ...state.cat1.map(s => ({ staff_id: s.id, name: s.name, dept: s.dept, category: 'cat1' })),
-      ...state.cat2.map(s => ({ staff_id: s.id, name: s.name, dept: s.dept, category: 'cat2' })),
-      ...state.cat3.map(s => ({ staff_id: s.id, name: s.name, dept: s.dept, category: 'cat3' })),
-    ];
-    if (staffRows.length > 0) {
-      const { error: staffErr } = await supabase.from('staff_members').insert(staffRows);
-      if (staffErr) throw staffErr;
-    }
+  // First save ever, or a full re-seed (settings text inputs changed):
+  // do a complete sync. This is heavier but only happens on first run,
+  // reset, or when the host edits staff/prize lists in Settings.
+  const settingsChanged = !prev ||
+    prev.rawInputs.prizes !== state.rawInputs.prizes ||
+    prev.rawInputs.cat1 !== state.rawInputs.cat1 ||
+    prev.rawInputs.cat2 !== state.rawInputs.cat2 ||
+    prev.rawInputs.cat3 !== state.rawInputs.cat3 ||
+    prev.tierRules.cat1Cutoff !== state.tierRules.cat1Cutoff ||
+    prev.tierRules.cat2Cutoff !== state.tierRules.cat2Cutoff;
 
-    // 3. Sync prizes: delete all and re-insert
-    await supabase.from('prizes').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    const prizeRows = state.prizes.map((name, idx) => ({ rank: idx + 1, name }));
-    if (prizeRows.length > 0) {
-      const { error: prizesErr } = await supabase.from('prizes').insert(prizeRows);
-      if (prizesErr) throw prizesErr;
-    }
+  if (settingsChanged) {
+    await fullSync(state);
+    return;
+  }
 
-    // 4. Sync winners: delete all and re-insert
-    await supabase.from('winners').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    const winnerRows = state.winners.map(w => ({
+  // Targeted sync: only update what changed.
+  // 1. Always update settings (current_prize_index may have changed)
+  const { error: settingsErr } = await supabase.from('draw_settings').upsert({
+    id: 1,
+    cat1_cutoff: state.tierRules.cat1Cutoff,
+    cat2_cutoff: state.tierRules.cat2Cutoff,
+    raw_prizes: state.rawInputs.prizes,
+    raw_cat1: state.rawInputs.cat1,
+    raw_cat2: state.rawInputs.cat2,
+    raw_cat3: state.rawInputs.cat3,
+    current_prize_index: state.currentPrizeIndex,
+    updated_at: new Date().toISOString(),
+  });
+  if (settingsErr) throw settingsErr;
+
+  // 2. Diff winners: figure out what was added or removed
+  const prevWinners = prev?.winners || [];
+  const prevWinnerKeys = new Set(prevWinners.map(w => `${w.rank}`));
+  const currentWinnerKeys = new Set(state.winners.map(w => `${w.rank}`));
+
+  // Delete removed winners
+  const removedRanks = prevWinnerKeys.size > 0
+    ? [...prevWinnerKeys].filter(k => !currentWinnerKeys.has(k)).map(Number)
+    : [];
+  if (removedRanks.length > 0) {
+    const { error: delErr } = await supabase.from('winners').delete().in('rank', removedRanks);
+    if (delErr) throw delErr;
+  }
+
+  // Insert new winners
+  const newWinners = state.winners.filter(w => !prevWinnerKeys.has(`${w.rank}`));
+  if (newWinners.length > 0) {
+    const winnerRows = newWinners.map(w => ({
       rank: w.rank,
       prize_name: w.prize,
       staff_id: w.id,
@@ -311,13 +347,112 @@ async function saveStateAsync(state: DrawState): Promise<void> {
       category: w.category,
       drawn_at: new Date(w.timestamp).toISOString(),
     }));
-    if (winnerRows.length > 0) {
-      const { error: winnersErr } = await supabase.from('winners').insert(winnerRows);
-      if (winnersErr) throw winnersErr;
-    }
-  } catch (err) {
-    console.error('Failed to save state to Supabase', err);
+    const { error: winnersErr } = await supabase.from('winners').insert(winnerRows);
+    if (winnersErr) throw winnersErr;
   }
+
+  // 3. Sync staff_members only if the staff pools changed (someone was drawn or redrawn)
+  const prevStaffIds = new Set([
+    ...(prev?.cat1 || []).map(s => `${s.category}:${s.id.toLowerCase()}`),
+    ...(prev?.cat2 || []).map(s => `${s.category}:${s.id.toLowerCase()}`),
+    ...(prev?.cat3 || []).map(s => `${s.category}:${s.id.toLowerCase()}`),
+  ]);
+  const currentStaffIds = new Set([
+    ...state.cat1.map(s => `${s.category}:${s.id.toLowerCase()}`),
+    ...state.cat2.map(s => `${s.category}:${s.id.toLowerCase()}`),
+    ...state.cat3.map(s => `${s.category}:${s.id.toLowerCase()}`),
+  ]);
+
+  const staffChanged = prevStaffIds.size !== currentStaffIds.size ||
+    [...currentStaffIds].some(id => !prevStaffIds.has(id));
+
+  if (staffChanged) {
+    // Remove staff members who are no longer in any pool (they won a prize)
+    const removedStaffKeys = [...prevStaffIds].filter(k => !currentStaffIds.has(k));
+    for (const key of removedStaffKeys) {
+      const [cat, staffId] = key.split(':');
+      const { error } = await supabase.from('staff_members')
+        .delete()
+        .eq('category', cat)
+        .ilike('staff_id', staffId);
+      if (error) throw error;
+    }
+
+    // Re-insert staff members who came back into a pool (redraw case)
+    const addedStaffKeys = [...currentStaffIds].filter(k => !prevStaffIds.has(k));
+    const addedStaff = [
+      ...state.cat1.filter(s => !prevStaffIds.has(`cat1:${s.id.toLowerCase()}`)),
+      ...state.cat2.filter(s => !prevStaffIds.has(`cat2:${s.id.toLowerCase()}`)),
+      ...state.cat3.filter(s => !prevStaffIds.has(`cat3:${s.id.toLowerCase()}`)),
+    ];
+    if (addedStaff.length > 0) {
+      const rows = addedStaff.map(s => ({
+        staff_id: s.id, name: s.name, dept: s.dept, category: s.category,
+      }));
+      const { error } = await supabase.from('staff_members').insert(rows);
+      if (error) throw error;
+    }
+  }
+
+  // 4. Sync prizes only if the prize list changed
+  const prevPrizeStr = (prev?.prizes || []).join('\n');
+  const currentPrizeStr = state.prizes.join('\n');
+  if (prevPrizeStr !== currentPrizeStr) {
+    await supabase.from('prizes').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    const prizeRows = state.prizes.map((name, idx) => ({ rank: idx + 1, name }));
+    if (prizeRows.length > 0) {
+      const { error } = await supabase.from('prizes').insert(prizeRows);
+      if (error) throw error;
+    }
+  }
+}
+
+/**
+ * Full sync: delete all rows from staff/prizes/winners and re-insert.
+ * Only used on first run, reset, or when settings text inputs change.
+ * Batches inserts to stay within Supabase's row limits.
+ */
+async function fullSync(state: DrawState): Promise<void> {
+  await Promise.all([
+    supabase.from('staff_members').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+    supabase.from('prizes').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+    supabase.from('winners').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+  ]);
+
+  const BATCH_SIZE = 80;
+
+  const allStaff = [
+    ...state.cat1.map(s => ({ staff_id: s.id, name: s.name, dept: s.dept, category: 'cat1' })),
+    ...state.cat2.map(s => ({ staff_id: s.id, name: s.name, dept: s.dept, category: 'cat2' })),
+    ...state.cat3.map(s => ({ staff_id: s.id, name: s.name, dept: s.dept, category: 'cat3' })),
+  ];
+
+  for (let i = 0; i < allStaff.length; i += BATCH_SIZE) {
+    const batch = allStaff.slice(i, i + BATCH_SIZE);
+    const { error } = await supabase.from('staff_members').insert(batch);
+    if (error) throw error;
+  }
+
+  const allPrizes = state.prizes.map((name, idx) => ({ rank: idx + 1, name }));
+  for (let i = 0; i < allPrizes.length; i += BATCH_SIZE) {
+    const batch = allPrizes.slice(i, i + BATCH_SIZE);
+    const { error } = await supabase.from('prizes').insert(batch);
+    if (error) throw error;
+  }
+
+  const { error: settingsErr } = await supabase.from('draw_settings').upsert({
+    id: 1,
+    cat1_cutoff: state.tierRules.cat1Cutoff,
+    cat2_cutoff: state.tierRules.cat2Cutoff,
+    raw_prizes: state.rawInputs.prizes,
+    raw_cat1: state.rawInputs.cat1,
+    raw_cat2: state.rawInputs.cat2,
+    raw_cat3: state.rawInputs.cat3,
+    current_prize_index: state.currentPrizeIndex,
+    updated_at: new Date().toISOString(),
+  });
+  if (settingsErr) throw settingsErr;
+  lastSavedState = state;
 }
 
 /**
