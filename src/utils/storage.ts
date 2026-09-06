@@ -1,14 +1,15 @@
 import { DrawState, StaffMember, CategoryId } from '../types';
 import { DEFAULT_PRIZES_LIST } from '../data/defaultPrizes';
+import { DEFAULT_CAT1_STAFF_RAW, DEFAULT_CAT2_STAFF_RAW, DEFAULT_CAT3_STAFF_RAW } from '../data/defaultStaff';
 
-export const STORAGE_KEY = 'annual_raffle_safe_offline_v3';
+export const STORAGE_KEY = 'annual_raffle_safe_offline_v6';
 
 export const DEFAULT_TIER_RULES = {
   cat1Cutoff: 10,
   cat2Cutoff: 30,
 };
 
-export { DEFAULT_PRIZES_LIST };
+export { DEFAULT_PRIZES_LIST, DEFAULT_CAT1_STAFF_RAW, DEFAULT_CAT2_STAFF_RAW, DEFAULT_CAT3_STAFF_RAW };
 
 export function parseStaffText(rawText: string, category: CategoryId): StaffMember[] {
   if (!rawText) return [];
@@ -53,56 +54,15 @@ export function generateSampleData(): {
   cat3Text: string;
 } {
   const prizesText = DEFAULT_PRIZES_LIST.join('\n');
-
-  const cat1List = [
-    'Alice Wong, EMP-101, Executive Management',
-    'Bob Smith, EMP-102, Principal Engineering',
-    'Charlie Brown, EMP-103, Cloud Architecture',
-    'David Clark, EMP-104, Global Marketing',
-    'Eva Green, EMP-105, Financial Planning',
-    'Frank Wright, EMP-106, People & Culture',
-    'Grace Lee, EMP-107, Product Innovation',
-    'Hannah White, EMP-108, Creative Design',
-    'Ian Scott, EMP-109, Legal & Compliance',
-    'Jack Miller, EMP-110, Cyber Security',
-    'Karen Davis, EMP-111, Global Logistics',
-    'Marcus Vance, EMP-112, Operations Excellence',
-    'Elena Rostova, EMP-113, Strategic Growth',
-  ];
-
-  const cat2List = [
-    'Liam Johnson, EMP-201, Enterprise Sales',
-    'Mia Martinez, EMP-202, Client Success',
-    'Noah Taylor, EMP-203, Infrastructure IT',
-    'Olivia Anderson, EMP-204, Corporate Administration',
-    'Sophia Chen, EMP-205, Business Development',
-    'Lucas Silva, EMP-206, Data Analytics',
-    'Chloe Dubois, EMP-207, Public Relations',
-    'Ethan Hunt, EMP-208, Quality Assurance',
-    'Maya Patel, EMP-209, Brand Strategy',
-    'Zoe Bennett, EMP-210, Talent Acquisition',
-    'Daniel Kim, EMP-211, Field Operations',
-    'Isabella Rossi, EMP-212, Financial Audit',
-  ];
-
-  const cat3List = [
-    'Quinn Roberts, EMP-301, Engineering Intern',
-    'Ruby Evans, EMP-302, Creative Contractor',
-    'Sam Wilson, EMP-303, Marketing Specialist',
-    'Thomas Gray, EMP-304, IT Support Associate',
-    'Uma Thurman, EMP-305, Research Assistant',
-    'Victor Hugo, EMP-306, Content Coordinator',
-    'Wendy Darling, EMP-307, Logistics Trainee',
-    'Xavier Woods, EMP-308, Events Assistant',
-    'Yasmine Al-Fassi, EMP-309, Junior Analyst',
-    'Zachary Bell, EMP-310, Summer Fellow',
-  ];
+  const cat1Text = DEFAULT_CAT1_STAFF_RAW;
+  const cat2Text = DEFAULT_CAT2_STAFF_RAW;
+  const cat3Text = DEFAULT_CAT3_STAFF_RAW;
 
   return {
     prizesText,
-    cat1Text: cat1List.join('\n'),
-    cat2Text: cat2List.join('\n'),
-    cat3Text: cat3List.join('\n'),
+    cat1Text,
+    cat2Text,
+    cat3Text,
   };
 }
 
