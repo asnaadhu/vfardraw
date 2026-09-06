@@ -320,6 +320,36 @@ async function saveStateAsync(state: DrawState): Promise<void> {
   }
 }
 
+/**
+ * Subscribe to realtime changes on all draw tables. When any table changes
+ * (from another browser/device), the callback is debounced and fired so the
+ * app can reload its full state and stay in sync.
+ *
+ * Returns an unsubscribe function.
+ */
+export function subscribeToChanges(onChange: () => void): () => void {
+  if (!isSupabaseConfigured) return () => {};
+
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const trigger = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(onChange, 400);
+  };
+
+  const channel = supabase
+    .channel('draw-sync')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'winners' }, trigger)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_members' }, trigger)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'prizes' }, trigger)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'draw_settings' }, trigger)
+    .subscribe();
+
+  return () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    supabase.removeChannel(channel);
+  };
+}
+
 export function exportWinnersToCSV(winners: DrawState['winners']): void {
   if (!winners || winners.length === 0) return;
 

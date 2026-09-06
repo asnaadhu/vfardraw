@@ -3,12 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
 import { DrawStage } from './components/DrawStage';
 import { SettingsModal } from './components/SettingsModal';
 import { DrawState, Winner, StaffMember } from './types';
-import { loadInitialState, saveState, generateSampleData, parseStaffText, DEFAULT_TIER_RULES } from './utils/storage';
+import { loadInitialState, saveState, generateSampleData, parseStaffText, DEFAULT_TIER_RULES, subscribeToChanges } from './utils/storage';
 import { soundEngine } from './utils/audio';
 import { Sparkles } from 'lucide-react';
 
@@ -17,6 +17,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'setup' | 'winners' | 'rules'>('setup');
   const [isMuted, setIsMuted] = useState(false);
+  const skipNextSyncRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -26,6 +27,21 @@ export default function App() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // Realtime sync: when another browser/device writes to the database,
+  // reload the full state to stay in sync. Skip the first sync event that
+  // arrives right after our own local write (saveState already updated state).
+  useEffect(() => {
+    if (!state) return;
+    const unsub = subscribeToChanges(() => {
+      if (skipNextSyncRef.current) {
+        skipNextSyncRef.current = false;
+        return;
+      }
+      loadInitialState().then(setState).catch(err => console.warn('Realtime reload failed', err));
+    });
+    return () => { unsub(); };
+  }, [state?.winners.length]);
 
   // Sync mute state with sound engine
   const handleToggleMute = useCallback(() => {
@@ -39,6 +55,7 @@ export default function App() {
   // Update draw state and persist
   const handleDrawComplete = useCallback((updatedState: DrawState, newWinner: Winner) => {
     setState(updatedState);
+    skipNextSyncRef.current = true;
     saveState(updatedState);
   }, []);
 
@@ -47,6 +64,7 @@ export default function App() {
     setState(prev => {
       if (!prev) return prev;
       const updated = { ...prev, currentPrizeIndex: newIndex };
+      skipNextSyncRef.current = true;
       saveState(updated);
       return updated;
     });
@@ -55,6 +73,7 @@ export default function App() {
   // Apply changes from settings modal
   const handleApplySettings = useCallback((updatedState: DrawState) => {
     setState(updatedState);
+    skipNextSyncRef.current = true;
     saveState(updatedState);
   }, []);
 
@@ -83,6 +102,7 @@ export default function App() {
     };
 
     setState(newState);
+    skipNextSyncRef.current = true;
     saveState(newState);
   }, []);
 
@@ -124,6 +144,7 @@ export default function App() {
         currentPrizeIndex: newPrizeIndex,
       };
 
+      skipNextSyncRef.current = true;
       saveState(updatedState);
       return updatedState;
     });
