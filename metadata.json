@@ -1,0 +1,6 @@
+{
+  "name": "Annual Staff Lucky Draw",
+  "description": "Interactive gala raffle and lucky draw system with customizable prize tiers, staff categories, live roll animations, and winner tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
