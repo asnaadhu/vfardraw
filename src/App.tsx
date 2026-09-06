@@ -10,12 +10,22 @@ import { SettingsModal } from './components/SettingsModal';
 import { DrawState, Winner, StaffMember } from './types';
 import { loadInitialState, saveState, generateSampleData, parseStaffText, DEFAULT_TIER_RULES } from './utils/storage';
 import { soundEngine } from './utils/audio';
+import { Sparkles } from 'lucide-react';
 
 export default function App() {
-  const [state, setState] = useState<DrawState>(() => loadInitialState());
+  const [state, setState] = useState<DrawState | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'setup' | 'winners' | 'rules'>('setup');
   const [isMuted, setIsMuted] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const loaded = await loadInitialState();
+      if (!cancelled) setState(loaded);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Sync mute state with sound engine
   const handleToggleMute = useCallback(() => {
@@ -35,6 +45,7 @@ export default function App() {
   // Navigate to specific prize index (e.g. Host wants to draw a specific prize or skip)
   const handleNavigatePrize = useCallback((newIndex: number) => {
     setState(prev => {
+      if (!prev) return prev;
       const updated = { ...prev, currentPrizeIndex: newIndex };
       saveState(updated);
       return updated;
@@ -78,6 +89,7 @@ export default function App() {
   // Redraw / return a winner back to pool
   const handleRedrawWinner = useCallback((winnerToRedraw: Winner) => {
     setState(prev => {
+      if (!prev) return prev;
       // Remove from winners list
       const updatedWinners = prev.winners.filter(w => !(w.id === winnerToRedraw.id && w.rank === winnerToRedraw.rank));
 
@@ -121,6 +133,18 @@ export default function App() {
     setSettingsTab(tab);
     setIsSettingsOpen(true);
   }, []);
+
+  if (!state) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center selection:bg-indigo-500 selection:text-white relative overflow-hidden font-sans">
+        <div className="fixed top-0 left-1/3 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none -z-10" />
+        <div className="flex flex-col items-center gap-4">
+          <Sparkles className="w-10 h-10 text-indigo-400 animate-spin" />
+          <p className="text-lg font-bold text-slate-300 tracking-wide">Loading Lucky Draw...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-indigo-500 selection:text-white relative overflow-hidden font-sans">
