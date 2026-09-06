@@ -125,12 +125,21 @@ export function loadInitialState(): DrawState {
     if (stored) {
       const parsed = JSON.parse(stored);
       if (parsed && Array.isArray(parsed.prizes) && parsed.prizes.length > 0) {
+        const loadedWinners: DrawState['winners'] = parsed.winners || [];
+        const winnerIdSet = new Set(loadedWinners.map(w => w.id.toLowerCase().trim()));
+        const winnerNameSet = new Set(loadedWinners.map(w => w.name.toLowerCase().trim()));
+
+        // Ensure no winner is ever in the active pool on load
+        const cleanCat1 = (parsed.cat1 || []).filter((s: StaffMember) => !winnerIdSet.has(s.id.toLowerCase().trim()) && !winnerNameSet.has(s.name.toLowerCase().trim()));
+        const cleanCat2 = (parsed.cat2 || []).filter((s: StaffMember) => !winnerIdSet.has(s.id.toLowerCase().trim()) && !winnerNameSet.has(s.name.toLowerCase().trim()));
+        const cleanCat3 = (parsed.cat3 || []).filter((s: StaffMember) => !winnerIdSet.has(s.id.toLowerCase().trim()) && !winnerNameSet.has(s.name.toLowerCase().trim()));
+
         return {
           prizes: parsed.prizes || [],
-          cat1: parsed.cat1 || [],
-          cat2: parsed.cat2 || [],
-          cat3: parsed.cat3 || [],
-          winners: parsed.winners || [],
+          cat1: cleanCat1,
+          cat2: cleanCat2,
+          cat3: cleanCat3,
+          winners: loadedWinners,
           currentPrizeIndex: typeof parsed.currentPrizeIndex === 'number' ? parsed.currentPrizeIndex : 0,
           tierRules: parsed.tierRules || DEFAULT_TIER_RULES,
           rawInputs: parsed.rawInputs || {

@@ -81,7 +81,7 @@ export default function App() {
       // Remove from winners list
       const updatedWinners = prev.winners.filter(w => !(w.id === winnerToRedraw.id && w.rank === winnerToRedraw.rank));
 
-      // Put back into respective category pool
+      // Put back into respective category pool without duplication
       const member: StaffMember = {
         id: winnerToRedraw.id,
         name: winnerToRedraw.name,
@@ -89,9 +89,16 @@ export default function App() {
         category: winnerToRedraw.category,
       };
 
-      const updatedCat1 = winnerToRedraw.category === 'cat1' ? [...prev.cat1, member] : prev.cat1;
-      const updatedCat2 = winnerToRedraw.category === 'cat2' ? [...prev.cat2, member] : prev.cat2;
-      const updatedCat3 = winnerToRedraw.category === 'cat3' ? [...prev.cat3, member] : prev.cat3;
+      const memberIdNorm = winnerToRedraw.id.toLowerCase().trim();
+      const memberNameNorm = winnerToRedraw.name.toLowerCase().trim();
+
+      const existsInCat1 = prev.cat1.some(s => s.id.toLowerCase().trim() === memberIdNorm || s.name.toLowerCase().trim() === memberNameNorm);
+      const existsInCat2 = prev.cat2.some(s => s.id.toLowerCase().trim() === memberIdNorm || s.name.toLowerCase().trim() === memberNameNorm);
+      const existsInCat3 = prev.cat3.some(s => s.id.toLowerCase().trim() === memberIdNorm || s.name.toLowerCase().trim() === memberNameNorm);
+
+      const updatedCat1 = winnerToRedraw.category === 'cat1' && !existsInCat1 ? [...prev.cat1, member] : prev.cat1;
+      const updatedCat2 = winnerToRedraw.category === 'cat2' && !existsInCat2 ? [...prev.cat2, member] : prev.cat2;
+      const updatedCat3 = winnerToRedraw.category === 'cat3' && !existsInCat3 ? [...prev.cat3, member] : prev.cat3;
 
       // Set current prize index back to this prize rank - 1 so it can be re-drawn
       const newPrizeIndex = Math.max(0, winnerToRedraw.rank - 1);

@@ -31,6 +31,90 @@ class SoundEngine {
   }
 
   /**
+   * Realistic mechanical reel ratchet click
+   */
+  public playReelTick(pitchMultiplier: number = 1.0, volume: number = 0.15) {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const filter = this.ctx.createBiquadFilter();
+
+      osc.type = 'triangle';
+      const baseFreq = 540 * Math.max(0.6, Math.min(2.0, pitchMultiplier));
+      osc.frequency.setValueAtTime(baseFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(80, now + 0.035);
+
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(800 * pitchMultiplier, now);
+      filter.Q.setValueAtTime(3.0, now);
+
+      gain.gain.setValueAtTime(Math.min(0.25, volume), now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.04);
+    } catch {
+      // AudioContext failure recovery
+    }
+  }
+
+  /**
+   * Solid mechanical lock impact when winning card snaps into center
+   */
+  public playLockImpact() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+
+      // Sub bass thump
+      const subOsc = this.ctx.createOscillator();
+      const subGain = this.ctx.createGain();
+      subOsc.type = 'sine';
+      subOsc.frequency.setValueAtTime(140, now);
+      subOsc.frequency.exponentialRampToValueAtTime(35, now + 0.35);
+
+      subGain.gain.setValueAtTime(0.3, now);
+      subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+      subOsc.connect(subGain);
+      subGain.connect(this.ctx.destination);
+
+      subOsc.start(now);
+      subOsc.stop(now + 0.36);
+
+      // Metallic ping
+      const pingOsc = this.ctx.createOscillator();
+      const pingGain = this.ctx.createGain();
+      pingOsc.type = 'triangle';
+      pingOsc.frequency.setValueAtTime(880, now);
+      pingOsc.frequency.exponentialRampToValueAtTime(440, now + 0.15);
+
+      pingGain.gain.setValueAtTime(0.18, now);
+      pingGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+
+      pingOsc.connect(pingGain);
+      pingGain.connect(this.ctx.destination);
+
+      pingOsc.start(now);
+      pingOsc.stop(now + 0.16);
+    } catch {
+      // AudioContext failure recovery
+    }
+  }
+
+  /**
    * Short snappy tick during rapid name cycling
    */
   public playTick(pitchMultiplier: number = 1.0) {

@@ -82,6 +82,14 @@ export function SettingsModal({
     const parsedCat2 = parseStaffText(cat2Input, 'cat2');
     const parsedCat3 = parseStaffText(cat3Input, 'cat3');
 
+    // Strict single-win rule: Ensure existing winners are never put back into active draw pools
+    const winnerIdSet = new Set(state.winners.map(w => w.id.toLowerCase().trim()));
+    const winnerNameSet = new Set(state.winners.map(w => w.name.toLowerCase().trim()));
+
+    const activeCat1 = parsedCat1.filter(s => !winnerIdSet.has(s.id.toLowerCase().trim()) && !winnerNameSet.has(s.name.toLowerCase().trim()));
+    const activeCat2 = parsedCat2.filter(s => !winnerIdSet.has(s.id.toLowerCase().trim()) && !winnerNameSet.has(s.name.toLowerCase().trim()));
+    const activeCat3 = parsedCat3.filter(s => !winnerIdSet.has(s.id.toLowerCase().trim()) && !winnerNameSet.has(s.name.toLowerCase().trim()));
+
     const newRules: TierRules = {
       cat1Cutoff: Number(cat1Cutoff) || 10,
       cat2Cutoff: Number(cat2Cutoff) || 30,
@@ -90,9 +98,9 @@ export function SettingsModal({
     const updated: DrawState = {
       ...state,
       prizes: parsedPrizes,
-      cat1: parsedCat1,
-      cat2: parsedCat2,
-      cat3: parsedCat3,
+      cat1: activeCat1,
+      cat2: activeCat2,
+      cat3: activeCat3,
       tierRules: newRules,
       rawInputs: {
         prizes: prizesInput,
