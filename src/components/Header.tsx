@@ -74,7 +74,7 @@ export function Header({ onOpenSettings }: HeaderProps) {
           }}
           title="Open Settings"
           aria-label="Open Settings"
-          className="fixed bottom-5 right-5 z-40 p-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 border border-indigo-500/30 text-white transition-all flex items-center justify-center shadow-lg shadow-indigo-600/30 hover:scale-105 active:scale-95 opacity-0 pointer-events-none"
+          className="fixed bottom-5 right-5 z-40 p-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 border border-indigo-500/30 text-white transition-all flex items-center justify-center shadow-lg shadow-indigo-600/30 hover:scale-105 active:scale-95 opacity-0"
         >
           <Settings className="w-5 h-5" />
         </button>
