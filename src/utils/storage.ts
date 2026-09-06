@@ -333,16 +333,26 @@ export function subscribeToChanges(onChange: () => void): () => void {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   const trigger = () => {
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(onChange, 400);
+    debounceTimer = setTimeout(onChange, 600);
   };
 
   const channel = supabase
-    .channel('draw-sync')
+    .channel('draw-sync', { config: { private: false } })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'winners' }, trigger)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_members' }, trigger)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'prizes' }, trigger)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'draw_settings' }, trigger)
-    .subscribe();
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        console.log('[draw-sync] Realtime subscription active');
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error('[draw-sync] Realtime subscription error');
+      } else if (status === 'TIMED_OUT') {
+        console.warn('[draw-sync] Realtime subscription timed out');
+      } else if (status === 'CLOSED') {
+        console.log('[draw-sync] Realtime subscription closed');
+      }
+    });
 
   return () => {
     if (debounceTimer) clearTimeout(debounceTimer);

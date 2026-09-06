@@ -17,7 +17,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'setup' | 'winners' | 'rules'>('setup');
   const [isMuted, setIsMuted] = useState(false);
-  const skipNextSyncRef = useRef(false);
+  const lastSaveTimeRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,19 +29,16 @@ export default function App() {
   }, []);
 
   // Realtime sync: when another browser/device writes to the database,
-  // reload the full state to stay in sync. Skip the first sync event that
-  // arrives right after our own local write (saveState already updated state).
+  // reload the full state to stay in sync. Uses a time window to skip
+  // events from our own writes (saveState does delete-all + re-insert
+  // which fires multiple realtime events over ~1-2 seconds).
   useEffect(() => {
-    if (!state) return;
     const unsub = subscribeToChanges(() => {
-      if (skipNextSyncRef.current) {
-        skipNextSyncRef.current = false;
-        return;
-      }
+      if (Date.now() - lastSaveTimeRef.current < 3000) return;
       loadInitialState().then(setState).catch(err => console.warn('Realtime reload failed', err));
     });
     return () => { unsub(); };
-  }, [state?.winners.length]);
+  }, []);
 
   // Sync mute state with sound engine
   const handleToggleMute = useCallback(() => {
@@ -55,7 +52,7 @@ export default function App() {
   // Update draw state and persist
   const handleDrawComplete = useCallback((updatedState: DrawState, newWinner: Winner) => {
     setState(updatedState);
-    skipNextSyncRef.current = true;
+    lastSaveTimeRef.current = Date.now();
     saveState(updatedState);
   }, []);
 
@@ -64,7 +61,7 @@ export default function App() {
     setState(prev => {
       if (!prev) return prev;
       const updated = { ...prev, currentPrizeIndex: newIndex };
-      skipNextSyncRef.current = true;
+      lastSaveTimeRef.current = Date.now();
       saveState(updated);
       return updated;
     });
@@ -73,7 +70,7 @@ export default function App() {
   // Apply changes from settings modal
   const handleApplySettings = useCallback((updatedState: DrawState) => {
     setState(updatedState);
-    skipNextSyncRef.current = true;
+    lastSaveTimeRef.current = Date.now();
     saveState(updatedState);
   }, []);
 
@@ -102,7 +99,7 @@ export default function App() {
     };
 
     setState(newState);
-    skipNextSyncRef.current = true;
+    lastSaveTimeRef.current = Date.now();
     saveState(newState);
   }, []);
 
@@ -144,7 +141,7 @@ export default function App() {
         currentPrizeIndex: newPrizeIndex,
       };
 
-      skipNextSyncRef.current = true;
+      lastSaveTimeRef.current = Date.now();
       saveState(updatedState);
       return updatedState;
     });
