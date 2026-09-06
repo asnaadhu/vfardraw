@@ -1,11 +1,14 @@
 import { DrawState, StaffMember, CategoryId } from '../types';
+import { DEFAULT_PRIZES_LIST } from '../data/defaultPrizes';
 
-export const STORAGE_KEY = 'annual_raffle_safe_offline_v2';
+export const STORAGE_KEY = 'annual_raffle_safe_offline_v3';
 
 export const DEFAULT_TIER_RULES = {
   cat1Cutoff: 10,
   cat2Cutoff: 30,
 };
+
+export { DEFAULT_PRIZES_LIST };
 
 export function parseStaffText(rawText: string, category: CategoryId): StaffMember[] {
   if (!rawText) return [];
@@ -49,23 +52,7 @@ export function generateSampleData(): {
   cat2Text: string;
   cat3Text: string;
 } {
-  const samplePrizes: string[] = [];
-  for (let i = 1; i <= 35; i++) {
-    if (i <= 3) {
-      const topPrizes = [
-        'Grand Prize: iPhone 16 Pro Max 512GB',
-        'Grand Prize: MacBook Pro 14" M3',
-        'Grand Prize: 4K OLED 65" Entertainment Suite',
-      ];
-      samplePrizes.push(topPrizes[i - 1]);
-    } else if (i <= 10) {
-      samplePrizes.push(`Grand Prize #${i}: Luxury Weekend Getaway / Tech Voucher`);
-    } else if (i <= 30) {
-      samplePrizes.push(`Tier 2 Gift #${i}: Dyson Airwrap / Noise-Cancelling Headphones`);
-    } else {
-      samplePrizes.push(`Consolation Gift #${i}: $250 Shopping & Dining Voucher`);
-    }
-  }
+  const prizesText = DEFAULT_PRIZES_LIST.join('\n');
 
   const cat1List = [
     'Alice Wong, EMP-101, Executive Management',
@@ -112,7 +99,7 @@ export function generateSampleData(): {
   ];
 
   return {
-    prizesText: samplePrizes.join('\n'),
+    prizesText,
     cat1Text: cat1List.join('\n'),
     cat2Text: cat2List.join('\n'),
     cat3Text: cat3List.join('\n'),

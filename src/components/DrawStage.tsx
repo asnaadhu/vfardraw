@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Gift, Award, Sparkles, AlertCircle, ChevronRight, ChevronLeft, CheckCircle2, RotateCcw, ArrowRight } from 'lucide-react';
+import { Gift, Award, Sparkles, AlertCircle, ChevronRight, ChevronLeft, CheckCircle2, RotateCcw, ArrowRight, X, Maximize2 } from 'lucide-react';
 import { DrawState, StaffMember, Winner } from '../types';
 import { soundEngine } from '../utils/audio';
 import { fireGrandConfetti, fireContinuousSideCannons } from '../utils/confetti';
@@ -95,6 +95,7 @@ export function DrawStage({
   const [isDrawing, setIsDrawing] = useState(false);
   const [rollSecondsLeft, setRollSecondsLeft] = useState<number>(8);
   const [reelList, setReelList] = useState<StaffMember[]>([]);
+  const [activeWinnerPopup, setActiveWinnerPopup] = useState<Winner | null>(null);
 
   const reelRef = useRef<HTMLDivElement | null>(null);
   const progressBarRef = useRef<HTMLDivElement | null>(null);
@@ -315,10 +316,11 @@ export function DrawStage({
           setIsDrawing(false);
           soundEngine.playFanfare();
           fireGrandConfetti();
-          fireContinuousSideCannons(2500);
+          fireContinuousSideCannons(3000);
 
           if (winnerPendingRef.current) {
             onDrawComplete(winnerPendingRef.current.state, winnerPendingRef.current.winner);
+            setActiveWinnerPopup(winnerPendingRef.current.winner);
           }
         }, 360);
       }
@@ -334,7 +336,7 @@ export function DrawStage({
     };
   }, []);
 
-  // Keyboard shortcut handlers (Space/Enter triggers draw when idle)
+  // Keyboard shortcut handlers (Space/Enter triggers draw when idle, Escape closes popup)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -342,9 +344,28 @@ export function DrawStage({
         return;
       }
 
+      if (e.code === 'Escape') {
+        if (activeWinnerPopup) {
+          e.preventDefault();
+          setActiveWinnerPopup(null);
+          return;
+        }
+      }
+
       if (e.code === 'Space' || e.code === 'Enter') {
         e.preventDefault();
         if (isDrawing) return;
+
+        if (activeWinnerPopup) {
+          if (activeWinnerPopup.rank < prizes.length) {
+            const nextIdx = activeWinnerPopup.rank;
+            setActiveWinnerPopup(null);
+            onNavigatePrize(nextIdx);
+          } else {
+            setActiveWinnerPopup(null);
+          }
+          return;
+        }
 
         if (currentPrizeWinner) {
           if (currentPrizeIndex < prizes.length - 1) {
@@ -355,10 +376,12 @@ export function DrawStage({
         }
       } else if (e.code === 'ArrowRight') {
         if (!isDrawing && currentPrizeIndex < prizes.length - 1) {
+          if (activeWinnerPopup) setActiveWinnerPopup(null);
           onNavigatePrize(currentPrizeIndex + 1);
         }
       } else if (e.code === 'ArrowLeft') {
         if (!isDrawing && currentPrizeIndex > 0) {
+          if (activeWinnerPopup) setActiveWinnerPopup(null);
           onNavigatePrize(currentPrizeIndex - 1);
         }
       }
@@ -368,7 +391,7 @@ export function DrawStage({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawing, isFinished, hasNoPrizes, currentPrizeIndex, currentPrizeWinner, eligibleInfo.pool.length, prizes.length, cat1, cat2, cat3]);
+  }, [isDrawing, isFinished, hasNoPrizes, currentPrizeIndex, currentPrizeWinner, activeWinnerPopup, eligibleInfo.pool.length, prizes.length, cat1, cat2, cat3]);
 
   // Initials generator
   const getInitials = (name: string) => {
@@ -484,31 +507,31 @@ export function DrawStage({
             </div>
           ) : currentPrizeWinner ? (
             /* Winner Reveal Card with Celebratory Scale-In and Glowing Shadow */
-            <div className="w-full px-4 sm:px-6 flex flex-col items-center justify-center gap-2 relative z-30 animate-winner-reveal">
+            <div 
+              onClick={() => setActiveWinnerPopup(currentPrizeWinner)}
+              title="Click to expand winner popup"
+              className="w-full px-3 sm:px-5 flex flex-col items-center justify-center gap-1.5 relative z-30 animate-winner-reveal cursor-pointer group"
+            >
               {/* Winner Crown Tag */}
-              <div className="flex items-center gap-1.5 px-3.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-xs font-extrabold uppercase tracking-wider shadow-md animate-winner-sparkle">
+              <div className="flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-xs font-extrabold uppercase tracking-wider shadow-md animate-winner-sparkle">
                 <Award className="w-3.5 h-3.5 text-amber-400" />
                 <span>Winner Selected</span>
+                <Maximize2 className="w-3 h-3 text-amber-400/70 group-hover:text-amber-300 ml-1 transition-colors" />
               </div>
 
               {/* Winner Highlight Box with Golden Glow Pulse */}
-              <div className="w-full py-2.5 px-3 sm:px-4 rounded-xl bg-slate-800 border-2 border-amber-400/60 flex items-center gap-3.5 shadow-2xl animate-winner-glow transition-all">
-                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-amber-500/30 via-slate-900 to-slate-950 border border-amber-400/50 flex items-center justify-center text-amber-300 text-xl sm:text-2xl font-extrabold tracking-wider shrink-0 shadow-inner">
-                  {getInitials(currentPrizeWinner.name)}
-                </div>
-                <div className="flex-1 min-w-0 text-left">
-                  <h3 className="text-lg sm:text-xl font-extrabold text-white truncate leading-snug drop-shadow-sm">
-                    {currentPrizeWinner.name}
-                  </h3>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <p className="text-xs text-amber-400 font-mono font-bold tracking-wider">
-                      {currentPrizeWinner.id}
-                    </p>
-                    <span className="text-slate-500">•</span>
-                    <p className="text-xs text-slate-200 font-semibold truncate">
-                      {currentPrizeWinner.dept}
-                    </p>
-                  </div>
+              <div className="w-full py-2.5 px-3 sm:px-5 rounded-xl bg-slate-800/95 border-2 border-amber-400/60 flex flex-col items-center justify-center text-center shadow-2xl animate-winner-glow transition-all group-hover:border-amber-300">
+                <h3 className="text-lg sm:text-xl md:text-2xl font-black text-white break-words max-w-full leading-tight drop-shadow-sm px-1">
+                  {currentPrizeWinner.name}
+                </h3>
+                <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 mt-1">
+                  <p className="text-xs sm:text-sm text-amber-400 font-mono font-bold tracking-wider">
+                    {currentPrizeWinner.id}
+                  </p>
+                  <span className="text-slate-500">•</span>
+                  <p className="text-xs sm:text-sm text-slate-200 font-semibold break-words">
+                    {currentPrizeWinner.dept}
+                  </p>
                 </div>
               </div>
             </div>
@@ -665,6 +688,117 @@ export function DrawStage({
           </div>
         </div>
       )}
+
+      {/* BIG CELEBRATORY WINNER POPUP MODAL */}
+      <AnimatePresence>
+        {activeWinnerPopup && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-fade-in"
+            onClick={() => setActiveWinnerPopup(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8, y: 25 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.85, y: 15 }}
+              transition={{ type: 'spring', damping: 20, stiffness: 260 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg sm:max-w-xl rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-2 border-amber-400/80 shadow-[0_0_90px_rgba(251,191,36,0.45)] p-6 sm:p-8 flex flex-col items-center text-center relative overflow-hidden"
+            >
+              {/* Top Golden Light Glow */}
+              <div className="absolute top-0 inset-x-0 h-36 bg-gradient-to-b from-amber-500/20 via-amber-500/5 to-transparent pointer-events-none" />
+
+              {/* Close Button Top Right */}
+              <button
+                onClick={() => setActiveWinnerPopup(null)}
+                className="absolute top-4 right-4 p-2 rounded-full text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors z-20 cursor-pointer"
+                aria-label="Close popup"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Top Celebration Tag */}
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/25 border border-amber-400/60 text-amber-300 text-xs sm:text-sm font-extrabold uppercase tracking-widest shadow-lg animate-pulse mb-3">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span>WINNER SELECTED</span>
+                <Sparkles className="w-4 h-4 text-amber-400" />
+              </div>
+
+              {/* Prize Name Box */}
+              <div className="w-full py-2.5 px-4 rounded-xl bg-slate-800/80 border border-slate-700/80 mb-5 flex items-center justify-center gap-2 shadow-inner">
+                <Award className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-xs sm:text-sm font-bold text-slate-300">
+                  Prize #{activeWinnerPopup.rank}:
+                </span>
+                <span className="text-xs sm:text-sm font-extrabold text-amber-300 break-words">
+                  {activeWinnerPopup.prize}
+                </span>
+              </div>
+
+              {/* Full Name Display - Unrestricted Width, No Truncation */}
+              <div className="w-full px-2 my-2">
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                  Winner Full Name
+                </div>
+                <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-white tracking-tight break-words leading-tight drop-shadow-md">
+                  {activeWinnerPopup.name}
+                </h2>
+              </div>
+
+              {/* ID & Title Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mt-5 mb-6">
+                {/* Staff ID */}
+                <div className="py-3 px-4 rounded-2xl bg-slate-800/90 border border-amber-400/40 flex flex-col items-center justify-center shadow-md">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Staff ID
+                  </span>
+                  <span className="text-base sm:text-lg font-mono font-black text-amber-400 mt-0.5 tracking-wider">
+                    {activeWinnerPopup.id}
+                  </span>
+                </div>
+
+                {/* Title / Department */}
+                <div className="py-3 px-4 rounded-2xl bg-slate-800/90 border border-slate-700/90 flex flex-col items-center justify-center shadow-md">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Title / Department
+                  </span>
+                  <span className="text-base sm:text-lg font-bold text-slate-100 mt-0.5 break-words text-center">
+                    {activeWinnerPopup.dept || 'Staff Member'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-center gap-3 w-full z-10">
+                {activeWinnerPopup.rank < prizes.length ? (
+                  <button
+                    onClick={() => {
+                      const nextIndex = activeWinnerPopup.rank;
+                      setActiveWinnerPopup(null);
+                      onNavigatePrize(nextIndex);
+                    }}
+                    className="w-full sm:flex-1 py-3.5 px-6 rounded-2xl font-extrabold text-sm sm:text-base tracking-wide bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-xl shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span>Proceed to Prize #{activeWinnerPopup.rank + 1}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <div className="w-full sm:flex-1 py-3 px-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold text-sm flex items-center justify-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>All {prizes.length} Prizes Completed!</span>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => setActiveWinnerPopup(null)}
+                  className="w-full sm:w-auto py-3.5 px-6 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-sm sm:text-base transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
