@@ -1,7 +1,7 @@
 import { DrawState, StaffMember, CategoryId, Winner, TierRules } from '../types';
 import { DEFAULT_PRIZES_LIST } from '../data/defaultPrizes';
 import { DEFAULT_CAT1_STAFF_RAW, DEFAULT_CAT2_STAFF_RAW, DEFAULT_CAT3_STAFF_RAW } from '../data/defaultStaff';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export const STORAGE_KEY = 'annual_raffle_safe_offline_v6';
 
@@ -129,6 +129,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 export async function loadInitialState(): Promise<DrawState> {
+  if (!isSupabaseConfigured) {
+    return buildDefaultState();
+  }
   try {
     const [settingsRes, staffRes, prizesRes, winnersRes] = await withTimeout(
       Promise.all([
@@ -257,6 +260,7 @@ export async function seedDatabase(state: DrawState): Promise<void> {
  * working with local state while the write happens in the background.
  */
 export function saveState(state: DrawState): void {
+  if (!isSupabaseConfigured) return;
   void saveStateAsync(state);
 }
 
