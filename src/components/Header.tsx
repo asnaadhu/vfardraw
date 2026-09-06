@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Maximize2, Minimize2, Settings } from 'lucide-react';
+import { Maximize2, Settings } from 'lucide-react';
 import { soundEngine } from '../utils/audio';
 
 interface HeaderProps {
@@ -61,21 +61,23 @@ export function Header({ onOpenSettings }: HeaderProps) {
           >
             <Maximize2 className="w-4 h-4 text-slate-300" />
           </button>
-
-          {/* Settings Button */}
-          <button
-            id="settings-modal-btn"
-            onClick={() => {
-              soundEngine.playClick();
-              onOpenSettings('setup');
-            }}
-            title="Open Settings"
-            aria-label="Open Settings"
-            className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 border border-indigo-500/30 text-white transition-colors flex items-center justify-center shadow-sm shadow-indigo-600/20"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
         </div>
+      )}
+
+      {/* Floating Settings Button - Bottom Right Corner */}
+      {!isFullscreen && (
+        <button
+          id="settings-modal-btn"
+          onClick={() => {
+            soundEngine.playClick();
+            onOpenSettings('setup');
+          }}
+          title="Open Settings"
+          aria-label="Open Settings"
+          className="fixed bottom-5 right-5 z-40 p-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 border border-indigo-500/30 text-white transition-all flex items-center justify-center shadow-lg shadow-indigo-600/30 hover:scale-105 active:scale-95"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
       )}
     </header>
   );
