@@ -119,14 +119,26 @@ interface DbSettings {
  * Load the full draw state from Supabase. If no data exists yet (first run),
  * seeds the database with default data and returns that.
  */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
 export async function loadInitialState(): Promise<DrawState> {
   try {
-    const [settingsRes, staffRes, prizesRes, winnersRes] = await Promise.all([
-      supabase.from('draw_settings').select('*').eq('id', 1).maybeSingle(),
-      supabase.from('staff_members').select('*').order('created_at', { ascending: true }),
-      supabase.from('prizes').select('*').order('rank', { ascending: true }),
-      supabase.from('winners').select('*').order('rank', { ascending: true }),
-    ]);
+    const [settingsRes, staffRes, prizesRes, winnersRes] = await withTimeout(
+      Promise.all([
+        supabase.from('draw_settings').select('*').eq('id', 1).maybeSingle(),
+        supabase.from('staff_members').select('*').order('created_at', { ascending: true }),
+        supabase.from('prizes').select('*').order('rank', { ascending: true }),
+        supabase.from('winners').select('*').order('rank', { ascending: true }),
+      ]),
+      5000
+    );
 
     if (settingsRes.error) throw settingsRes.error;
     if (staffRes.error) throw staffRes.error;
